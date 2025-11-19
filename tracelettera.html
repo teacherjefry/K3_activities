@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A/a Letter Tracing</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Varela Round: A rounded, beautiful font for kids -->
+    <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
+    <style>
+        /* Custom styles for the canvas container and overall feel */
+        body {
+            /* Using Varela Round for a clean, beautiful, and rounded look */
+            font-family: 'Varela Round', sans-serif;
+        }
+        #canvas-container {
+            max-width: 800px;
+            width: 95%;
+            aspect-ratio: 1 / 1; /* Keep canvas square */
+            touch-action: none; /* Prevent scrolling while drawing */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-radius: 1.5rem; /* rounded-3xl */
+        }
+        #tracing-canvas {
+            background-color: #fff;
+            border-radius: 1.5rem;
+            width: 100%;
+            height: 100%;
+        }
+        .control-button {
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .control-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px -1px rgba(0, 0, 0, 0.15);
+        }
+    </style>
+</head>
+<body class="bg-purple-100 min-h-screen p-4 flex flex-col items-center justify-center">
+
+    <div class="w-full max-w-4xl text-center mb-6">
+        <h1 class="text-4xl font-extrabold text-purple-800 mb-2">✏️ Letter Tracing Fun!</h1>
+        <p class="text-lg text-purple-600">Use your mouse or finger to trace the letter guide.</p>
+    </div>
+
+    <!-- Letter Selector and Controls -->
+    <div class="flex flex-wrap justify-center gap-4 mb-6 w-full max-w-lg">
+        <button id="btn-A" onclick="setCurrentLetter('A')" class="control-button px-6 py-3 text-2xl font-bold rounded-xl bg-purple-500 text-white hover:bg-purple-600 focus:outline-none focus:ring-4 focus:ring-purple-300">
+            Trace Capital 'A'
+        </button>
+        <button id="btn-a" onclick="setCurrentLetter('a')" class="control-button px-6 py-3 text-2xl font-bold rounded-xl bg-purple-200 text-purple-800 hover:bg-purple-300 focus:outline-none focus:ring-4 focus:ring-purple-300">
+            Trace Lowercase 'a'
+        </button>
+        <button onclick="clearCanvas(true)" class="control-button px-6 py-3 text-xl font-bold rounded-xl bg-yellow-500 text-yellow-900 hover:bg-yellow-600 focus:outline-none focus:ring-4 focus:ring-yellow-300">
+            Clear
+        </button>
+    </div>
+
+    <!-- Canvas Container -->
+    <div id="canvas-container" class="bg-white p-2 md:p-4 border-4 border-purple-400">
+        <canvas id="tracing-canvas"></canvas>
+    </div>
+
+    <!-- Progress Bar and Status -->
+    <div class="w-full max-w-lg mt-6 p-4 bg-white rounded-xl shadow-lg border border-purple-200">
+        <p id="status-message" class="text-xl font-semibold text-purple-700 mb-2">
+            Start by tracing the letter guide!
+        </p>
+        <div class="w-full bg-gray-200 rounded-full h-4">
+            <div id="progress-bar" class="bg-green-500 h-4 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+        </div>
+    </div>
+    
+    <!-- Hidden Message Box for Alerts -->
+    <div id="message-box" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden z-50 items-center justify-center">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl max-w-sm text-center transform scale-100 transition-transform duration-300">
+            <h3 id="message-title" class="text-3xl font-bold mb-4 text-green-600"></h3>
+            <p id="message-content" class="text-gray-700 mb-6 text-lg"></p>
+            <button onclick="hideMessage()" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-full">
+                Hooray!
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tracing-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const progressBar = document.getElementById('progress-bar');
+        const statusMessage = document.getElementById('status-message');
+
+        let isDrawing = false;
+        let currentLetter = 'A';
+        const TRACE_RADIUS = 20; // Radius around the path points where tracing counts
+        let progressMarkers = []; // Array to track if path sections are covered
+        const MIN_PROGRESS = 0.95; // 95% completion to trigger success
+
+        // Define tracing paths relative to a 500x500 virtual canvas
+        // Each path is an array of segments, and each segment is an array of points.
+        const TRACE_PATHS_VIRTUAL = {
+            'A': [
+                // Segment 1: Left leg (bottom to top)
+                [{x: 150, y: 400}, {x: 250, y: 100}], 
+                // Segment 2: Right leg (top to bottom)
+                [{x: 250, y: 100}, {x: 350, y: 400}], 
+                // Segment 3: Crossbar (left to right)
+                [{x: 180, y: 300}, {x: 320, y: 300}],
+            ],
+            'a': [
+                // Segment 1: The Circle/Oval 
+                [{x: 320, y: 240},  // Start/End point, where the stem connects
+                 {x: 290, y: 190},
+                 {x: 250, y: 180},  // Top curve
+                 {x: 200, y: 220},
+                 {x: 180, y: 300},  // Left side
+                 {x: 200, y: 380},
+                 {x: 250, y: 400},  // Bottom curve
+                 {x: 300, y: 380},
+                 {x: 320, y: 340},
+                 {x: 320, y: 240}], // Finish the oval back at the stem connection point
+
+                // Segment 2: Vertical stem (top to bottom, starts at the oval connection point)
+                [{x: 320, y: 240}, {x: 320, y: 380}], 
+            ]
+        };
+
+        let currentVirtualPath = []; // The path currently scaled to the canvas size
+
+        // --- Utility Functions for Messages ---
+
+        function showMessage(title, content) {
+            document.getElementById('message-title').innerText = title;
+            document.getElementById('message-content').innerText = content;
+            document.getElementById('message-box').classList.remove('hidden');
+            document.getElementById('message-box').classList.add('flex');
+        }
+
+        function hideMessage() {
+            document.getElementById('message-box').classList.add('hidden');
+            document.getElementById('message-box').classList.remove('flex');
+        }
+
+        // --- Canvas Initialization and Drawing ---
+
+        function resizeCanvas() {
+            // Set canvas drawing size to match container's client size
+            const size = Math.min(container.clientWidth, container.clientHeight);
+            canvas.width = size;
+            canvas.height = size;
+            
+            // Redraw everything after resize
+            drawGuide();
+        }
+
+        function scalePath(path) {
+            const scale = canvas.width / 500;
+            const scaledPath = path.map(segment => 
+                segment.map(point => ({
+                    x: point.x * scale,
+                    y: point.y * scale
+                }))
+            );
+            return scaledPath;
+        }
+
+        function drawGuide() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            currentVirtualPath = scalePath(TRACE_PATHS_VIRTUAL[currentLetter]);
+            const pathData = currentVirtualPath;
+
+            // Reset dash line for drawing the guide
+            ctx.setLineDash([]); 
+
+            // Guide settings: clear, dashed line for easy tracing
+            ctx.strokeStyle = '#9333ea'; // Darker Purple Guide line color
+            ctx.lineWidth = 4;           // Thin line for a guide
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.setLineDash([15, 10]); // Creates a clear dashed line pattern
+
+            // Draw each segment of the letter
+            pathData.forEach(segment => {
+                if (segment.length < 2) return;
+
+                ctx.beginPath();
+                ctx.moveTo(segment[0].x, segment[0].y);
+                
+                // For drawing the line through all points
+                for (let i = 1; i < segment.length; i++) {
+                    ctx.lineTo(segment[i].x, segment[i].y);
+                }
+                ctx.stroke();
+            });
+
+            // Reset dash pattern so the user's drawn line is solid
+            ctx.setLineDash([]); 
+            
+            // Clear the progress markers and re-initialize
+            initializeProgressMarkers(pathData);
+            updateProgress(0);
+        }
+        
+        // --- Tracing Logic ---
+
+        function initializeProgressMarkers(pathData) {
+            progressMarkers = [];
+            const POINTS_PER_SEGMENT = 10;
+            let totalPoints = 0;
+
+            pathData.forEach(segment => {
+                // Approximate curve with intermediate points
+                for (let i = 0; i <= POINTS_PER_SEGMENT; i++) {
+                    const t = i / POINTS_PER_SEGMENT;
+                    let x, y;
+
+                    if (segment.length === 2) {
+                        // Simple Line
+                        x = segment[0].x + t * (segment[1].x - segment[0].x);
+                        y = segment[0].y + t * (segment[1].y - segment[0].y);
+                    } else if (segment.length > 2) {
+                        // Multi-point segments (like the 'a' oval)
+                        const segmentIndex = Math.floor(t * (segment.length - 1));
+                        const nextSegmentIndex = Math.min(segment.length - 1, segmentIndex + 1);
+                        
+                        // Calculate the ratio within the specific sub-segment
+                        const segmentRatio = (t * (segment.length - 1)) - segmentIndex;
+
+                        const p1 = segment[segmentIndex];
+                        const p2 = segment[nextSegmentIndex];
+
+                        x = p1.x + segmentRatio * (p2.x - p1.x);
+                        y = p1.y + segmentRatio * (p2.y - p1.y);
+                    } else {
+                        return; // Skip invalid segment
+                    }
+                    
+                    // Sample points for coverage checking
+                    if (t > 0 && t < 1 && (totalPoints % 3 === 1)) {
+                         progressMarkers.push({ x, y, covered: false });
+                         totalPoints++;
+                    } else if (t === 0 || t === 1) {
+                         progressMarkers.push({ x, y, covered: false });
+                         totalPoints++;
+                    }
+                }
+            });
+        }
+
+        function getProgress() {
+            if (progressMarkers.length === 0) return 0;
+            const coveredCount = progressMarkers.filter(m => m.covered).length;
+            return coveredCount / progressMarkers.length;
+        }
+
+        function updateProgress(progress) {
+            progressBar.style.width = `${progress * 100}%`;
+            
+            if (progress >= MIN_PROGRESS) {
+                statusMessage.textContent = "⭐️ Wow! You finished the letter!";
+                // Success feedback
+                if (progress < 1) { // Only show once
+                    showMessage("You Got It!", `You successfully traced the letter ${currentLetter.toUpperCase()}! Click 'Clear' to try again or switch letters.`);
+                }
+                progressBar.classList.add('bg-yellow-400');
+                progressBar.classList.remove('bg-green-500');
+                isDrawing = false; // Stop drawing after success
+            } else {
+                statusMessage.textContent = `Progress: ${Math.round(progress * 100)}%`;
+                progressBar.classList.add('bg-green-500');
+                progressBar.classList.remove('bg-yellow-400');
+            }
+        }
+
+        function checkPathCoverage(x, y) {
+            const scale = canvas.width / 500;
+            const radiusSq = (TRACE_RADIUS * scale) * (TRACE_RADIUS * scale);
+            let updated = false;
+
+            progressMarkers.forEach(marker => {
+                if (marker.covered) return;
+                
+                const dx = x - marker.x;
+                const dy = y - marker.y;
+                
+                if ((dx * dx + dy * dy) < radiusSq) {
+                    marker.covered = true;
+                    updated = true;
+                }
+            });
+
+            if (updated) {
+                const progress = getProgress();
+                updateProgress(progress);
+            }
+        }
+
+        function startDrawing(e) {
+            e.preventDefault();
+            if (getProgress() >= MIN_PROGRESS) return; // Prevent drawing after completion
+
+            isDrawing = true;
+            const { x, y } = getCanvasCoordinates(e);
+
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            
+            // Check coverage on start
+            checkPathCoverage(x, y); 
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+
+            const { x, y } = getCanvasCoordinates(e);
+
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = '#4c1d95'; // Dark Purple Drawing color
+            ctx.lineWidth = 30;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // Check coverage while drawing
+            checkPathCoverage(x, y);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function getCanvasCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        function clearCanvas(andResetMarkers) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGuide();
+            if (andResetMarkers) {
+                updateProgress(0);
+            }
+        }
+        
+        function setCurrentLetter(letter) {
+            currentLetter = letter;
+            
+            // Update button styles
+            document.getElementById('btn-A').classList.remove('bg-purple-500', 'text-white');
+            document.getElementById('btn-A').classList.add('bg-purple-200', 'text-purple-800');
+            document.getElementById('btn-a').classList.remove('bg-purple-500', 'text-white');
+            document.getElementById('btn-a').classList.add('bg-purple-200', 'text-purple-800');
+
+            document.getElementById(`btn-${letter}`).classList.add('bg-purple-500', 'text-white');
+            document.getElementById(`btn-${letter}`).classList.remove('bg-purple-200', 'text-purple-800');
+
+            clearCanvas(true);
+        }
+
+        // --- Event Listeners and Setup ---
+        
+        function setupListeners() {
+            // Mouse events
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+
+            // Touch events
+            canvas.addEventListener('touchstart', startDrawing);
+            canvas.addEventListener('touchmove', draw);
+            canvas.addEventListener('touchend', stopDrawing);
+
+            // Resize event for responsiveness
+            window.addEventListener('resize', resizeCanvas);
+        }
+
+        window.onload = function() {
+            setupListeners();
+            resizeCanvas(); // Initial setup
+            // Ensure initial letter selection is highlighted
+            setCurrentLetter('A');
+        };
+    </script>
+</body>
+</html>
