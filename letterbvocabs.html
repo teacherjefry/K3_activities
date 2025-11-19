@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B-mazing Drag & Drop Match</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load Varela Round Font for a beautiful, rounded look -->
+    <link href="https://fonts.googleapis.com/css2?family=Varela+Round&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Varela Round', sans-serif;
+        }
+        .drop-zone {
+            transition: all 0.2s;
+            min-height: 150px;
+            border: 4px solid #fbcfe8; /* Pink border */
+            background-color: #fce7f3; /* Light Pink background */
+            border-radius: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            position: relative;
+        }
+        .drop-zone.hovered {
+            border-color: #a78bfa; /* Purple on hover */
+            background-color: #ede9fe; /* Lighter purple background */
+        }
+        .drop-zone.correct {
+            border-color: #10b981; /* Green on correct drop */
+            background-color: #d1fae5;
+        }
+        .drop-zone.complete .emoji {
+            opacity: 0.5;
+        }
+        .emoji {
+            font-size: 4rem; 
+            transition: opacity 0.3s;
+        }
+        .word-tile {
+            cursor: grab;
+            user-select: none;
+            padding: 1rem 1.5rem;
+            margin: 0.5rem;
+            background-color: #fef08a; /* Yellow tile */
+            color: #854d0e; /* Brown text */
+            font-weight: bold;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+            touch-action: none; /* Crucial for touch drag */
+        }
+        .word-tile:hover {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            transform: translateY(-2px);
+        }
+        .word-tile.dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+        .word-tile.matched {
+            display: none;
+        }
+        .word-match {
+            position: absolute;
+            bottom: 10px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #4c1d95;
+        }
+    </style>
+</head>
+<body class="bg-blue-50 min-h-screen p-4 flex flex-col items-center justify-center">
+
+    <div class="w-full max-w-5xl text-center mb-8">
+        <h1 class="text-5xl font-extrabold text-purple-800 mb-2 shadow-sm">B-mazing Match! 🅱️</h1>
+        <p class="text-xl text-purple-600 mb-4">Drag the correct word to match the picture, focusing on the letter 'B'.</p>
+        <p id="score-display" class="text-2xl font-bold text-green-700"></p>
+    </div>
+
+    <!-- Draggable Words Container -->
+    <div id="drag-container" class="w-full max-w-5xl p-4 mb-8 bg-white rounded-xl shadow-inner flex flex-wrap justify-center gap-4 border-2 border-purple-300">
+        <!-- Draggable word tiles will be inserted here -->
+    </div>
+
+    <!-- Drop Zones Grid -->
+    <div id="vocab-grid" class="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-5xl">
+        <!-- Drop zones (emojis) will be inserted here -->
+    </div>
+
+    <script>
+        const vocabWords = [
+            // Updated to words starting with 'B'
+            { word: "banana", emoji: "🍌", id: "banana" },
+            { word: "balloon", emoji: "🎈", id: "balloon" },
+            { word: "bird", emoji: "🐦", id: "bird" },
+            { word: "book", emoji: "📚", id: "book" },
+            { word: "boat", emoji: "⛵", id: "boat" },
+            { word: "bee", emoji: "🐝", id: "bee" },
+            { word: "bread", emoji: "🍞", id: "bread" },
+            { word: "butterfly", emoji: "🦋", id: "butterfly" }
+        ];
+
+        const API_KEY = ""; 
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${API_KEY}`;
+        const GRID_CONTAINER = document.getElementById('vocab-grid');
+        const DRAG_CONTAINER = document.getElementById('drag-container');
+        const SCORE_DISPLAY = document.getElementById('score-display');
+        const VOICE_NAME = "Puck";
+        let score = 0;
+        let matchedCount = 0;
+        const totalWords = vocabWords.length;
+
+        // --- TTS & Utility Functions (WAV conversion, Base64, FetchAudio) ---
+        
+        function pcmToWav(pcm16, sampleRate = 16000) {
+            const numChannels = 1;
+            const bytesPerSample = 2;
+            const buffer = new ArrayBuffer(44 + pcm16.byteLength);
+            const view = new DataView(buffer);
+
+            function writeString(view, offset, string) {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            }
+
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcm16.byteLength, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
+            view.setUint16(32, numChannels * bytesPerSample, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcm16.byteLength, true);
+            
+            for (let i = 0; i < pcm16.length; i++) {
+                view.setInt16(44 + i * 2, pcm16[i], true);
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        const audioCache = {};
+        async function fetchAudioForWord(word, maxRetries = 3) {
+            const payload = {
+                contents: [{ parts: [{ text: `Say clearly and cheerfully: ${word}` }] }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } }
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429 && attempt < maxRetries - 1) {
+                        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+
+                    if (!response.ok) { throw new Error(`API response failed with status: ${response.status}`); }
+
+                    const result = await response.json();
+                    const part = result?.candidates?.[0]?.content?.parts?.[0];
+                    const audioData = part?.inlineData?.data;
+                    const mimeType = part?.inlineData?.mimeType;
+
+                    if (audioData && mimeType && mimeType.startsWith("audio/L16")) {
+                        const rateMatch = mimeType.match(/rate=(\d+)/);
+                        const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 16000;
+
+                        const pcmData = base64ToArrayBuffer(audioData);
+                        const pcm16 = new Int16Array(pcmData);
+                        const wavBlob = pcmToWav(pcm16, sampleRate);
+                        return URL.createObjectURL(wavBlob);
+                    } else { throw new Error("Invalid or missing audio data in API response."); }
+                } catch (error) {
+                    // console.error(`Attempt ${attempt + 1} failed for word "${word}":`, error);
+                    if (attempt === maxRetries - 1) { return null; }
+                }
+            }
+        }
+        
+        async function playWordAudio(word) {
+            let audioUrl = audioCache[word];
+            if (!audioUrl) {
+                audioUrl = await fetchAudioForWord(word);
+                if (audioUrl) {
+                    audioCache[word] = audioUrl;
+                }
+            }
+            if (audioUrl) {
+                new Audio(audioUrl).play();
+            } else {
+                console.error(`Audio failed for: ${word}`);
+            }
+        }
+
+        // --- Game Logic ---
+
+        function updateScore(isCorrect) {
+            if (isCorrect) {
+                score++;
+                matchedCount++;
+            }
+            SCORE_DISPLAY.textContent = `Matched: ${matchedCount} / ${totalWords}`;
+
+            if (matchedCount === totalWords) {
+                playWordAudio("Great job you matched all the words!");
+                alertSuccess(`You matched all ${totalWords} words! Great job! 🎉`);
+            }
+        }
+
+        function alertSuccess(message) {
+            // Using a simple alert replacement for success message
+            const alertBox = document.createElement('div');
+            alertBox.className = "fixed top-0 left-0 right-0 p-4 text-center bg-green-500 text-white text-xl font-bold z-50 shadow-xl";
+            alertBox.textContent = message;
+            document.body.appendChild(alertBox);
+            setTimeout(() => alertBox.remove(), 3000);
+        }
+
+        // Fisher-Yates shuffle algorithm
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        // --- Drag and Drop Handlers (Desktop & Touch) ---
+
+        // Desktop Drag and Drop
+        let draggedElement = null;
+
+        function dragStart(e) {
+            draggedElement = e.target;
+            e.dataTransfer.setData('text/plain', draggedElement.dataset.word);
+            setTimeout(() => {
+                draggedElement.classList.add('dragging');
+            }, 0);
+        }
+
+        function dragEnd(e) {
+            draggedElement.classList.remove('dragging');
+            draggedElement = null;
+        }
+
+        function dragOver(e) {
+            e.preventDefault(); // Allows drop
+            if (e.target.classList.contains('drop-zone') && !e.target.classList.contains('correct')) {
+                e.target.classList.add('hovered');
+            }
+        }
+
+        function dragLeave(e) {
+            if (e.target.classList.contains('drop-zone')) {
+                e.target.classList.remove('hovered');
+            }
+        }
+
+        function drop(e) {
+            e.preventDefault();
+            const dropZone = e.currentTarget;
+            dropZone.classList.remove('hovered');
+
+            if (dropZone.classList.contains('correct')) return; // Already matched
+
+            const draggedWord = draggedElement.dataset.word;
+            const targetId = dropZone.dataset.id;
+
+            if (draggedWord === targetId) {
+                // Correct Match!
+                dropZone.classList.add('correct', 'complete');
+                draggedElement.classList.add('matched');
+
+                // Display the word inside the drop zone
+                dropZone.innerHTML += `<div class="word-match">${draggedWord.toUpperCase()}</div>`;
+                
+                playWordAudio(draggedWord);
+                updateScore(true);
+            } else {
+                // Incorrect Match
+                dropZone.style.border = '4px solid #ef4444'; // Red flash
+                setTimeout(() => {
+                    dropZone.style.border = '4px solid #fbcfe8'; // Reset color
+                }, 500);
+            }
+        }
+        
+        // --- Touch Dragging Implementation ---
+
+        let touchDraggedElement = null;
+        let originalX, originalY;
+        let offsetX, offsetY;
+        let currentTouchTarget = null;
+
+        function touchStart(e) {
+            if (matchedCount === totalWords) return;
+            touchDraggedElement = e.currentTarget;
+            touchDraggedElement.classList.add('dragging');
+            
+            const touch = e.touches[0];
+            const rect = touchDraggedElement.getBoundingClientRect();
+
+            // Calculate offset (where the touch happened relative to the element's top-left corner)
+            offsetX = touch.clientX - rect.left;
+            offsetY = touch.clientY - rect.top;
+            
+            // Record original position to snap back if failed
+            originalX = rect.left;
+            originalY = rect.top;
+
+            // Prevent default to enable drag behavior
+            e.preventDefault();
+        }
+
+        function touchMove(e) {
+            if (!touchDraggedElement) return;
+            e.preventDefault(); // Prevent scrolling
+
+            const touch = e.touches[0];
+            const x = touch.clientX - offsetX;
+            const y = touch.clientY - offsetY;
+
+            // Move the element using transform (better performance)
+            touchDraggedElement.style.position = 'fixed';
+            touchDraggedElement.style.left = `${x}px`;
+            touchDraggedElement.style.top = `${y}px`;
+
+            // Check for drop zone intersection
+            const centerPoint = { x: touch.clientX, y: touch.clientY };
+            const elementsAtCenter = document.elementsFromPoint(centerPoint.x, centerPoint.y);
+            
+            let newTarget = null;
+            for (const el of elementsAtCenter) {
+                if (el.classList.contains('drop-zone') && !el.classList.contains('correct')) {
+                    newTarget = el;
+                    break;
+                }
+            }
+            
+            // Handle hover class changes
+            if (currentTouchTarget && currentTouchTarget !== newTarget) {
+                currentTouchTarget.classList.remove('hovered');
+            }
+            if (newTarget) {
+                newTarget.classList.add('hovered');
+            }
+            currentTouchTarget = newTarget;
+        }
+
+        function touchEnd(e) {
+            if (!touchDraggedElement) return;
+
+            touchDraggedElement.classList.remove('dragging');
+            const draggedWord = touchDraggedElement.dataset.word;
+            
+            let successfullyDropped = false;
+
+            if (currentTouchTarget) {
+                const dropZone = currentTouchTarget;
+                dropZone.classList.remove('hovered');
+
+                const targetId = dropZone.dataset.id;
+
+                if (draggedWord === targetId) {
+                    // Correct Match!
+                    dropZone.classList.add('correct', 'complete');
+                    touchDraggedElement.classList.add('matched');
+                    
+                    // Display the word inside the drop zone
+                    dropZone.innerHTML += `<div class="word-match">${draggedWord.toUpperCase()}</div>`;
+                    
+                    playWordAudio(draggedWord);
+                    updateScore(true);
+                    successfullyDropped = true;
+                } else {
+                    // Incorrect Match
+                    dropZone.style.border = '4px solid #ef4444'; // Red flash
+                    setTimeout(() => {
+                        dropZone.style.border = '4px solid #fbcfe8'; // Reset color
+                    }, 500);
+                }
+            }
+
+            // Snap back if not successfully dropped
+            if (!successfullyDropped) {
+                touchDraggedElement.style.transition = 'transform 0.3s ease-in-out';
+                touchDraggedElement.style.position = 'static'; // Reset to static flow
+                touchDraggedElement.style.transform = '';
+            } else {
+                 touchDraggedElement.style.position = 'static'; // Keep static flow if matched
+                 touchDraggedElement.style.transform = '';
+            }
+
+            // Clean up touch state
+            currentTouchTarget = null;
+            touchDraggedElement = null;
+        }
+
+        // --- Initialization ---
+
+        function initializeGame() {
+            // 1. Render Drop Zones (Emojis)
+            vocabWords.forEach((item) => {
+                const dropZone = document.createElement('div');
+                dropZone.className = `drop-zone p-4 flex flex-col items-center justify-center text-center shadow-lg`;
+                dropZone.setAttribute('data-id', item.id);
+                dropZone.addEventListener('dragover', dragOver);
+                dropZone.addEventListener('dragleave', dragLeave);
+                dropZone.addEventListener('drop', drop);
+                
+                const emojiDiv = document.createElement('div');
+                emojiDiv.className = 'emoji';
+                emojiDiv.textContent = item.emoji;
+
+                dropZone.appendChild(emojiDiv);
+                GRID_CONTAINER.appendChild(dropZone);
+            });
+
+            // 2. Render Draggable Word Tiles (Shuffled)
+            const shuffledWords = vocabWords.map(item => item.word);
+            shuffle(shuffledWords);
+
+            shuffledWords.forEach((word) => {
+                const wordTile = document.createElement('div');
+                wordTile.className = 'word-tile';
+                wordTile.textContent = word.toUpperCase();
+                wordTile.setAttribute('draggable', true);
+                wordTile.setAttribute('data-word', word);
+                
+                // Desktop Listeners
+                wordTile.addEventListener('dragstart', dragStart);
+                wordTile.addEventListener('dragend', dragEnd);
+
+                // Touch Listeners
+                wordTile.addEventListener('touchstart', touchStart);
+                wordTile.addEventListener('touchmove', touchMove);
+                wordTile.addEventListener('touchend', touchEnd);
+
+                DRAG_CONTAINER.appendChild(wordTile);
+            });
+            
+            updateScore(false); // Initial score display
+        }
+
+        window.onload = initializeGame;
+    </script>
+</body>
+</html>
