@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Letter Bb Tracing Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&display=swap');
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #e8f5e9; /* Very Light Green background */
+        }
+        /* Custom styling for the tracing area */
+        #tracingCanvas {
+            /* Dashed border in a light green to match the primary theme color */
+            border: 6px dashed #A5D6A7; 
+            touch-action: none; /* Prevents scrolling/zooming on touch devices */
+            /* Gradient background (Light Blue to Light Green - remains fresh) */
+            background: linear-gradient(135deg, #e3f2fd 0%, #e8f5e9 100%); 
+            
+            /* Custom Pencil Cursor using an inline SVG data URI */
+            cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path fill='black' d='M20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83zM3 17.25V21h3.75l11.05-11.05-3.75-3.75L3 17.25z'/></svg>") 0 24, crosshair;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div id="app" class="w-full max-w-7xl bg-white rounded-[40px] shadow-2xl shadow-green-300/50 p-6 md:p-12 border-8 border-green-500">
+        
+        <h1 class="text-4xl md:text-6xl font-extrabold text-center text-green-700 mb-4">
+            🌳 Green Garden Tracing Fun 🦋
+        </h1>
+        <p class="text-center text-gray-700 mb-8 text-xl md:text-2xl font-medium">
+            Grab your **black** crayon and trace! Let's make the big 'B' and the little 'b'!
+        </p>
+
+        <!-- Canvas Container --><div class="aspect-video w-full mb-8">
+            <canvas id="tracingCanvas" class="w-full h-full rounded-2xl shadow-inner shadow-green-100"></canvas>
+        </div>
+
+        <!-- Controls and Status --><div class="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+            <div id="messageBox" class="text-2xl font-bold text-gray-900 h-10 w-full text-center sm:text-left">
+                Ready to trace Letter B and b!
+            </div>
+            <button id="resetButton" class="w-full sm:w-auto px-8 py-4 bg-green-500 text-white text-2xl font-extrabold rounded-full shadow-xl hover:bg-green-600 transition duration-150 transform hover:scale-105 active:bg-green-700 ring-4 ring-green-200">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                New Sheet
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tracingCanvas');
+        const ctx = canvas.getContext('2d');
+        const resetButton = document.getElementById('resetButton');
+        const messageBox = document.getElementById('messageBox');
+        
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        
+        // --- Setup and Drawing Functions ---
+
+        /**
+         * Sets up canvas dimensions for responsiveness and draws the letter guides.
+         */
+        function setupCanvas() {
+            // Set canvas size based on its container's current dimensions
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            drawGuides();
+        }
+
+        /**
+         * Draws the dashed outlines for 'B' and 'b' to guide the tracing.
+         */
+        function drawGuides() {
+            const w = canvas.width;
+            const h = canvas.height;
+            
+            // Clear the canvas first
+            ctx.clearRect(0, 0, w, h);
+
+            // Set up the guide lines (Purple)
+            ctx.strokeStyle = '#9C27B0'; // Deep Purple for the dashed guide lines
+            ctx.lineWidth = 15; // Thick dashed line for clear visibility
+            ctx.lineCap = 'round';
+            // Use 10px dash and 10px gap for a classic dashed tracing line.
+            ctx.setLineDash([10, 10]); 
+            
+            // Font size calculation for maximal display.
+            const fontSize = Math.min(h * 0.95, w * 0.35); 
+            ctx.font = `${fontSize}px 'Fredoka'`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const bX = w * 0.35; // Position for 'B' 
+            const bY = h / 2;
+            const bbX = w * 0.65; // Position for 'b'
+
+            // Drawing 'B'
+            ctx.strokeText('B', bX, bY);
+
+            // Drawing 'b'
+            ctx.strokeText('b', bbX, bY);
+
+            // Reset for user tracing - the "crayon" settings
+            ctx.setLineDash([]); 
+            ctx.lineWidth = 30; // Even thicker, crayon-like tracing line
+            ctx.strokeStyle = '#000000'; // Black for tracing
+            
+            messageBox.textContent = "Ready! Start tracing the dashed lines!";
+        }
+
+        /**
+         * Calculates coordinates relative to the canvas.
+         * @param {number} clientX - X coordinate from the event.
+         * @param {number} clientY - Y coordinate from the event.
+         * @returns {{x: number, y: number}} - Relative coordinates.
+         */
+        function getCanvasCoordinates(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+
+        // --- Event Handlers ---
+
+        function startDrawing(e) {
+            e.preventDefault();
+            isDrawing = true;
+            
+            // Determine touch or mouse coordinates
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            
+            const coords = getCanvasCoordinates(clientX, clientY);
+            [lastX, lastY] = [coords.x, coords.y];
+            messageBox.textContent = "Tracing... you're doing great!";
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+
+            const coords = getCanvasCoordinates(clientX, clientY);
+            const x = coords.x;
+            const y = coords.y;
+
+            // Draw the line segment
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            
+            // Update the last position
+            [lastX, lastY] = [x, y];
+        }
+
+        function stopDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            ctx.closePath();
+            messageBox.textContent = "Yay! A beautiful B and b!";
+        }
+
+        function resetActivity() {
+            setupCanvas();
+        }
+        
+        // --- Event Listeners ---
+        
+        // Mouse Events
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        // Touch Events
+        canvas.addEventListener('touchstart', startDrawing);
+        canvas.addEventListener('touchmove', draw);
+        canvas.addEventListener('touchend', stopDrawing);
+        
+        // Button Event
+        resetButton.addEventListener('click', resetActivity);
+
+        // Responsive Resizing
+        window.addEventListener('resize', setupCanvas);
+
+        // Initial setup when the page loads
+        window.onload = setupCanvas;
+
+    </script>
+</body>
+</html>
