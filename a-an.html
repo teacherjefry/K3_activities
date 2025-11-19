@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A or AN Quiz</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the quiz items */
+        .quiz-item {
+            min-height: 200px;
+            transition: all 0.3s ease;
+        }
+        .correct-answer {
+            border: 4px solid #10b981; /* Emerald Green */
+            box-shadow: 0 0 10px #10b981;
+        }
+        .wrong-answer {
+            border: 4px solid #ef4444; /* Red */
+            box-shadow: 0 0 10px #ef4444;
+        }
+        .quiz-button {
+            transition: transform 0.1s;
+        }
+        .quiz-button:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+        /* Style for the emoji/image */
+        .emoji {
+            font-size: 4rem;
+        }
+    </style>
+</head>
+<body class="bg-indigo-50 min-h-screen p-4 md:p-8 font-sans">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-5xl font-extrabold text-indigo-700 mb-2">
+                🅰️ or 🅽️ Challenge!
+            </h1>
+            <p class="text-xl text-gray-600">
+                Choose **A** or **AN** for each item. Think about the **sound**! You can check each one individually!
+            </p>
+        </header>
+
+        <!-- Quiz Container -->
+        <div id="quiz-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Quiz items will be injected here by JavaScript -->
+        </div>
+
+        <!-- Score and Control Area -->
+        <div class="bg-white p-6 rounded-3xl shadow-2xl sticky bottom-4 z-10 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div id="result-display" class="text-2xl font-bold text-gray-700">
+                Ready to play!
+            </div>
+            <div class="flex gap-4 w-full md:w-auto">
+                <button onclick="checkAnswers()" id="check-button" class="quiz-button bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-full shadow-lg transform hover:scale-105">
+                    Check Answers (Final Score)
+                </button>
+                <button onclick="resetQuiz()" class="quiz-button bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-8 rounded-full shadow-lg transform hover:scale-105">
+                    Try Again
+                </button>
+            </div>
+        </div>
+
+        <!-- Hidden Message Box for Confirmation/Alerts -->
+        <div id="message-box" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden z-50 items-center justify-center">
+            <div class="bg-white p-8 rounded-3xl shadow-2xl max-w-sm text-center">
+                <h3 id="message-title" class="text-3xl font-bold mb-4 text-indigo-700"></h3>
+                <p id="message-content" class="text-gray-700 mb-6"></p>
+                <button onclick="hideMessage()" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-full">
+                    Got It!
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Data for the quiz items
+        const quizItems = [
+            { id: 1, emoji: '🍎', word: 'Apple', answer: 'AN' },
+            { id: 2, emoji: '🚢', word: 'Boat', answer: 'A' },
+            { id: 3, emoji: '🦒', word: 'Giraffe', answer: 'A' },
+            { id: 4, emoji: '🏠', word: 'House', answer: 'A' },
+            { id: 5, emoji: '🍦', word: 'Ice Cream', answer: 'AN' },
+            { id: 6, emoji: '☂️', word: 'Umbrella', answer: 'AN' },
+            { id: 7, emoji: '🐱', word: 'Cat', answer: 'A' },
+            { id: 8, emoji: '🍊', word: 'Orange', answer: 'AN' },
+            { id: 9, emoji: '⭐', word: 'Star', answer: 'A' },
+            { id: 10, emoji: '🥚', word: 'Egg', answer: 'AN' },
+        ];
+
+        let userSelections = {}; // Store user's choice for each item ID
+
+        // --- Utility Functions for Message Box ---
+
+        function showMessage(title, content) {
+            document.getElementById('message-title').innerText = title;
+            document.getElementById('message-content').innerText = content;
+            document.getElementById('message-box').classList.remove('hidden');
+            document.getElementById('message-box').classList.add('flex');
+        }
+
+        function hideMessage() {
+            document.getElementById('message-box').classList.add('hidden');
+            document.getElementById('message-box').classList.remove('flex');
+        }
+
+        // --- Quiz Rendering and Logic ---
+
+        function handleSelection(itemId, choice) {
+            userSelections[itemId] = choice;
+            const itemElement = document.getElementById(`item-${itemId}`);
+            const buttons = itemElement.querySelectorAll('.quiz-option-btn');
+            
+            buttons.forEach(btn => {
+                // Clear all selection highlights
+                btn.classList.remove('bg-indigo-400', 'ring-4', 'ring-indigo-300');
+                btn.classList.add('bg-indigo-200');
+                if (btn.innerText === choice) {
+                    // Apply selection highlight
+                    btn.classList.remove('bg-indigo-200');
+                    btn.classList.add('bg-indigo-400', 'ring-4', 'ring-indigo-300');
+                }
+            });
+            
+            // Enable the individual check button
+            const checkButton = document.getElementById(`check-single-${itemId}`);
+            if (checkButton) {
+                checkButton.disabled = false;
+                checkButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            
+            // Clear any previous color feedback when a new choice is made
+            itemElement.classList.remove('correct-answer', 'wrong-answer');
+            itemElement.querySelectorAll('.quiz-option-btn').forEach(btn => {
+                 btn.classList.remove('ring-4', 'ring-emerald-500'); // Clear correct answer hint
+            });
+        }
+
+        function checkSingleAnswer(itemId) {
+            const item = quizItems.find(i => i.id === itemId);
+            const selection = userSelections[itemId];
+            const itemElement = document.getElementById(`item-${itemId}`);
+            const checkButton = document.getElementById(`check-single-${itemId}`);
+            
+            if (selection === null) {
+                showMessage("Oops!", `Please choose either A or AN for the ${item.word} before checking.`);
+                return;
+            }
+            
+            // 1. Perform check and apply feedback
+            itemElement.classList.remove('border-yellow-500', 'border-dashed');
+            
+            if (selection === item.answer) {
+                itemElement.classList.add('correct-answer');
+                showMessage("Correct!", `🥳 Yes! '${item.answer}' is right for '${item.word}'.`);
+            } else {
+                itemElement.classList.add('wrong-answer');
+                const correctBtn = document.getElementById(`btn-${item.answer.toLowerCase()}-${item.id}`);
+                if (correctBtn) {
+                    // Highlight the correct answer hint
+                    correctBtn.classList.add('ring-4', 'ring-emerald-500'); 
+                }
+                showMessage("Try Again!", `😔 Not quite. The correct choice is '${item.answer}' for '${item.word}'.`);
+            }
+            
+            // 2. Lock the item
+            
+            // Disable option buttons for this item
+            itemElement.querySelectorAll('.quiz-option-btn').forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('opacity-70');
+            });
+            
+            // Disable the check button for this item
+            checkButton.disabled = true;
+            checkButton.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            document.getElementById('result-display').textContent = "Item checked! Keep going or hit 'Check Answers (Final Score)'.";
+        }
+
+
+        function renderQuiz() {
+            const container = document.getElementById('quiz-container');
+            container.innerHTML = '';
+            userSelections = {};
+
+            quizItems.forEach(item => {
+                userSelections[item.id] = null;
+
+                const card = document.createElement('div');
+                card.id = `item-${item.id}`;
+                card.classList.add(
+                    'quiz-item', 'bg-white', 'p-6', 'rounded-2xl', 'shadow-lg', 'flex', 'flex-col', 'items-center', 'justify-between', 'border-2', 'border-indigo-100'
+                );
+                
+                card.innerHTML = `
+                    <div class="text-center mb-4">
+                        <span class="emoji block mb-2">${item.emoji}</span>
+                        <p class="text-xl font-semibold text-gray-700 capitalize">... ${item.word}</p>
+                    </div>
+                    <div class="flex gap-4 w-full justify-center mb-4">
+                        <button id="btn-a-${item.id}"
+                            class="quiz-option-btn w-1/2 p-3 text-lg font-bold rounded-xl bg-indigo-200 text-indigo-800 hover:bg-indigo-300 shadow-md transition duration-150"
+                            onclick="handleSelection(${item.id}, 'A')">
+                            A
+                        </button>
+                        <button id="btn-an-${item.id}"
+                            class="quiz-option-btn w-1/2 p-3 text-lg font-bold rounded-xl bg-indigo-200 text-indigo-800 hover:bg-indigo-300 shadow-md transition duration-150"
+                            onclick="handleSelection(${item.id}, 'AN')">
+                            AN
+                        </button>
+                    </div>
+                    <!-- Individual Check Button -->
+                    <button id="check-single-${item.id}"
+                        class="quiz-button bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-6 rounded-full w-full shadow-md opacity-50 cursor-not-allowed"
+                        disabled
+                        onclick="checkSingleAnswer(${item.id})">
+                        Check This One
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+            
+            document.getElementById('result-display').textContent = "Select A or AN for all items!";
+            
+            // Ensure the main check button is enabled when rendering
+            document.getElementById('check-button').disabled = false;
+            document.getElementById('check-button').classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+
+        function checkAnswers() {
+            let score = 0;
+            const total = quizItems.length;
+            let answeredCount = 0;
+
+            quizItems.forEach(item => {
+                const itemElement = document.getElementById(`item-${item.id}`);
+                const selection = userSelections[item.id];
+                const checkButton = document.getElementById(`check-single-${item.id}`);
+                
+                // 1. If an item has a selection, score and lock it
+                if (selection !== null) {
+                    answeredCount++;
+                    itemElement.classList.remove('border-yellow-500', 'border-dashed');
+                    
+                    if (selection === item.answer) {
+                        // Correct!
+                        itemElement.classList.add('correct-answer');
+                        score++;
+                    } else {
+                        // Wrong. Show correct option hint and mark wrong.
+                        itemElement.classList.add('wrong-answer');
+                        const correctBtn = document.getElementById(`btn-${item.answer.toLowerCase()}-${item.id}`);
+                        if (correctBtn) {
+                            // Highlight the correct answer
+                            correctBtn.classList.add('ring-4', 'ring-emerald-500'); 
+                        }
+                    }
+                    
+                    // Lock the item: Disable option and individual check buttons
+                    itemElement.querySelectorAll('.quiz-option-btn').forEach(btn => {
+                        btn.disabled = true;
+                        btn.classList.add('opacity-70');
+                    });
+                    if(checkButton) {
+                         checkButton.disabled = true;
+                         checkButton.classList.add('opacity-50', 'cursor-not-allowed');
+                    }
+
+                } else {
+                    // Unanswered items get a visual warning
+                    itemElement.classList.add('border-yellow-500', 'border-dashed');
+                    if(checkButton) {
+                         checkButton.disabled = true;
+                         checkButton.classList.add('opacity-50', 'cursor-not-allowed');
+                    }
+                }
+            });
+
+            // Disable the main check button
+            document.getElementById('check-button').disabled = true;
+            document.getElementById('check-button').classList.add('opacity-50', 'cursor-not-allowed');
+            
+            // Display final score
+            const resultDisplay = document.getElementById('result-display');
+            const percentage = answeredCount > 0 ? Math.round((score / answeredCount) * 100) : 0;
+            
+            resultDisplay.textContent = `FINAL SCORE: ${score} / ${answeredCount} answered (${percentage}%)`;
+
+            let messageTitle;
+            let messageContent;
+            
+            if (answeredCount < total) {
+                 messageTitle = "Quiz Finalized!";
+                 messageContent = `You answered ${answeredCount} out of ${total} items, scoring ${score} correct among those. Review the red ones and hit 'Try Again' to practice the rest!`;
+            } else if (percentage === 100) {
+                messageTitle = "🎉 Perfect Score! 🎉";
+                messageContent = "You are a Vowel Master! You got everything right!";
+            } else if (percentage >= 70) {
+                messageTitle = "Good Effort!";
+                messageContent = `You scored ${score} / ${total}. Take a look at the ones marked in red and try again!`;
+            } else {
+                messageTitle = "Keep Trying!";
+                messageContent = `You scored ${score} / ${total}. Review the rule (A for consonant sounds, AN for vowel sounds) and try again.`;
+            }
+
+            showMessage(messageTitle, messageContent);
+        }
+        
+        function resetQuiz() {
+            // Remove selection highlighting and feedback classes from all items
+            document.querySelectorAll('.quiz-item').forEach(el => {
+                el.classList.remove('correct-answer', 'wrong-answer', 'border-yellow-500', 'border-dashed');
+                el.querySelectorAll('.quiz-option-btn').forEach(btn => {
+                    btn.disabled = false; // Re-enable option buttons
+                    btn.classList.remove('bg-indigo-400', 'ring-4', 'ring-indigo-300', 'ring-2', 'ring-emerald-500', 'opacity-70');
+                    btn.classList.add('bg-indigo-200');
+                });
+            });
+            
+            // Re-render the quiz to clear the state and selections
+            renderQuiz();
+        }
+
+        // Initialize the quiz when the page loads
+        window.onload = renderQuiz;
+    </script>
+</body>
+</html>
